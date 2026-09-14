@@ -1,10 +1,18 @@
 const Cart = require("../Models/Cart.model");
 const Order = require("../Models/Order.model");
+const User = require("../Models/User.model");
 const axios = require("axios");
 
 const checkoutCart = async (req, res) => {
   try {
     const userId = req.user.id;
+
+    // Fetch user to ensure email is available for Paystack
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     const cart = await Cart.findOne({ userId }).populate("items.productId");
 
     if (!cart || cart.items.length === 0) {
@@ -31,12 +39,14 @@ const checkoutCart = async (req, res) => {
       status: "Pending"
     });
 
+    const frontendUrl = process.env.FRONTEND_URL || "https://swift-cart-frontend-indol.vercel.app";
+
     const paystackResponse = await axios.post(
       "https://api.paystack.co/transaction/initialize",
       {
-        email: req.user.email,
+        email: user.email,
         amount: totalAmount * 100, 
-        callback_url: "http://localhost:5173/order-success",
+        callback_url: `${frontendUrl}/order-success`,
         metadata: { orderId: order._id.toString() }
       },
       {
@@ -54,6 +64,7 @@ const checkoutCart = async (req, res) => {
       order
     });
   } catch (error) {
+    console.error("Checkout error:", error.response?.data || error.message);
     return res.status(500).json({ message: "Server error", error: error.response?.data || error.message });
   }
 };
@@ -80,6 +91,7 @@ const verifyPayment = async (req, res) => {
     return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 const getUserOrders = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -103,4 +115,3 @@ const getAllOrders = async (req, res) => {
 };
 
 module.exports = { checkoutCart, verifyPayment, getUserOrders, getAllOrders };
-
